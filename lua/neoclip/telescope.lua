@@ -159,14 +159,6 @@ local function get_edit_handler (typ, telescope_opts)
     end
 end
 
-local displayer = entry_display.create {
-    separator = " ",
-    items = {
-        { width = 60 },
-        { remaining = true },
-    },
-}
-
 local spec_per_regtype = {
     c = 'charwise',
     l = 'linewise',
@@ -182,23 +174,37 @@ local function spec_from_entry(entry)
     return spec
 end
 
-local function make_display(entry, typ)
-    local to_display = { macro_to_keycodes_if_needed(entry.contents, typ)[1] }
+local function make_display(entry, typ, index_column_width)
+    local to_display = {
+        { entry.index, 'TelescopeResultsNumber' },
+        vim.trim(table.concat(macro_to_keycodes_if_needed(entry.contents, typ), '\\n', 1, #entry.contents > 3 and 3 or #entry.contents))
+    }
+
     if settings.content_spec_column then
         table.insert(to_display, {spec_from_entry(entry), "Comment"})
     end
+
+    local displayer = entry_display.create({
+        separator = " ",
+        items = {
+            { width = index_column_width, right_justify = true },
+            { width = 72 },
+            { remaining = true },
+        },
+    })
+
     return displayer(to_display)
 end
 
-local function make_entry_maker(typ)
+local function make_entry_maker(typ, index_column_width)
     return function (entry)
         local display = function (e)
-            return make_display(e, typ)
+            return make_display(e, typ, index_column_width)
         end
 
         return {
             display = display,
-            contents = entry.contents,
+            contents =  entry.contents,
             regtype = entry.regtype,
             filetype = entry.filetype,
             ordinal = table.concat(entry.contents, '\n'),
@@ -270,6 +276,8 @@ local function get_export(register_names, typ)
         end
         local results = storage.get({reversed = true})[typ]
 
+        opts.index_column_width = results and #tostring(#results) or 1
+
         -- Tries to pre-select the entry given at `opts.open_at_entry`
         if opts and opts.open_at_entry then
             local target_hash = sorted_set.hash(opts.open_at_entry)
@@ -289,7 +297,7 @@ local function get_export(register_names, typ)
             prompt_prefix = settings.prompt or nil,
             finder = finders.new_table({
                 results = results,
-                entry_maker = make_entry_maker(typ),
+                entry_maker = make_entry_maker(typ, opts.index_column_width),
             }),
             previewer = previewer,
             sorter = config.generic_sorter(opts),
